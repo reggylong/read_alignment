@@ -6,18 +6,14 @@
 #include <sstream>
 #include <sys/time.h>
 #include <sys/resource.h>
-#include <condition_variable>
-#include <mutex>
 #include <thread>
-
+#include <mutex>
 #include "semaphore.h"
 
 using namespace std;
 
 static const size_t LENGTH = 11;
-static const long THREADS = 4;
-semaphore s(THREADS);
-mutex write_m;
+static const long THREADS = 6;
 
 static inline void add(map<string, vector<size_t> > &m, const string &kmer, long pos) {
   if (m.find(kmer) == m.end()) {
@@ -30,66 +26,55 @@ static inline void add(map<string, vector<size_t> > &m, const string &kmer, long
 }
 
 
-void read(stringstream &ss, map<string, vector<size_t> > &m, long pos) {
-  char c;
+void process_chromosome(string ref, map<string, vector<size_t> > &m, long pos) {
+  s.signal(on_thread_exit);
   string kmer = "";
-  while (ss.get(c)) {
-    if (kmer.length() < LENGTH) {
-      kmer += c;
-      if (kmer.length() == LENGTH) {
-        add(m, kmer, pos - LENGTH);
-      } else {
-        kmer.erase(0, 1);
-        kmer += c;
-        add(m, kmer, pos - LENGTH);
-      }
-    }
-    pos++;
+
+  for (size_t i = 0; i < ref.length() - LENGTH; i += LENGTH) {
+    add(m, ref.substr(i, LENGTH), pos);
+    pos += LENGTH;
   }
-  s.signal();
 }
 
-void get_single_job(ifstream &f, stringstream &ss, long &pos) {
+long get_job(ifstream &f, string &ref) {
   string line;
   while (getline(f, line)) {
-    if (line[0] == '<') {
+    if (line[0] == '>') {
+      cout << line << endl;
       break;
     }
-    ss << line;
-    pos += line.length();
+    if (ref.find('N') != string::npos) continue;
+    ref.append(line);
   }
+  return ref.size();
+
 }
 
 void distribute_work(char *fname, map<string, vector<size_t> > &m) {
+
   ifstream f;
   f.open(fname);
-  string kmer = "";
 
-  vector<thread> threads;
   string line;
-  getline(f, line);
   // 1 index
   long pos = 1;
   long prev_pos = 1;
+  getline(f, line); // remove first header
+  cout << line << endl;
+
   while (!f.eof()) {
-    stringstream ss;
-    get_single_job(f, ss, pos);
-    s.wait();
-    threads.emplace_back(thread(read, m, ss, prev_pos));
-    prev_pos = pos;
+    string ref;
+    ref.reserve(10000000);
+    long offset = get_job(f, ref);
+    process_chromosome(ref, m, pos);
+    pos += offset;
   }
   f.close();
-  for (size_t i = 0; i < threads.size(); i++) {
-    threads[i].join();
-  }
+
   cout << "Size of map: " << m.size() << endl;
-  //size_t usage = (11 + sizeof(size_t) + sizeof(_Rb_tree_node_base)) * m.size();
-  //cout << "(Under) Estimated Memory Usage: " << usage << endl;
-  int who = RUSAGE_SELF;
-  struct rusage usage;
-  int ret;
-  ret = getrusage(who, &usage);
-  cout << "Max memory usage: " << usage.ru_maxrss * 1024 << " bytes" << endl;;
+  for (auto& kv : m) {
+    cout << kv.first << endl;
+  }
 }
 
 
