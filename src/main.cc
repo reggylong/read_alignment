@@ -10,58 +10,58 @@
 #include <thread>
 #include <mutex>
 #include <unordered_set>
+#include <set>
 #include <cassert>
 #include <cmath>
+#include <list>
+#include <algorithm>
 #include "semaphore.h"
+
+#define DEBUG false 
 
 using namespace std;
 
-static const size_t LENGTH = 15;
+static const size_t LENGTH = 14;
 static const size_t SPACE = pow(4, LENGTH);
 static const long THREADS = 6;
 
-static inline uint32_t chtoi(char c) {
-  switch (toupper(c)) {
-    case 'A':
-      return 0;
-    case 'C':
-      return 1;
-    case 'G':
-      return 2;
-    case 'T':
-      return 3;
-    default:
-      throw invalid_argument("Expected [AGCT], got " + c);
-  }
+static __attribute__ ((noinline)) uint32_t chtoi(char c) {
+  // A & 3 = 01
+  // C & 3 = 11
+  // G & 3 = 11
+  // T & 3 = 10
+  if (c == 'G') return 2;
+  return (uint32_t) c & 3;
 }
 
-static inline uint32_t ktoi(const string &str) {
+static __attribute__ ((noinline)) bool ktoi(const string &read, const long pos, uint32_t &index) {
   uint32_t base = 1;
-  assert(str.length() == LENGTH);
   uint32_t total = 0;
-  for (int i = str.length() - 1; i >= 0; i--) {
-    total += base * chtoi(str[i]);
+  if (DEBUG) assert(pos + LENGTH - 1 < read.length());
+  for (int i = pos + LENGTH - 1; i >= pos; i--) {
+    if (toupper(read[i]) == 'N') return false;
+    total += base * chtoi(toupper(read[i]));
     base *= 4;
   }
-  return total; 
+  index = total;
+  return true;
 }
 
-static inline void add(vector<vector<size_t>> &m, const string &kmer, long pos) {
-  uint32_t index = ktoi(kmer);
-  m[index].emplace_back(pos);
-}
-
-static inline void add(unordered_set<size_t> &s, vector<size_t> &v) {
-  for (size_t i = 0; i < v.size(); i++) {
-    s.insert(v[i]);
+static __attribute__ ((noinline)) bool add(vector<vector<size_t>> &m, const string &read, long pos) {
+  uint32_t index = 0;
+  if (ktoi(read, pos, index)) {
+    m[index].emplace_back(pos);
+    return true;
   }
+  return false;
 }
 
-void process_chromosome(string ref, vector<vector<size_t>> &m, long pos) {
+// Importantly, we do not make distinctions between chromosomes
+void process_chromosome(string &ref, vector<vector<size_t>> &m, long pos) {
   string kmer = "";
 
-  for (size_t i = 0; i < ref.length() - LENGTH; i += LENGTH) {
-    add(m, ref.substr(i, LENGTH), pos);
+  for (size_t i = pos; i < ref.length() - LENGTH; i += LENGTH) {
+    add(m, ref, pos);
     pos += LENGTH;
   }
 }
@@ -86,6 +86,9 @@ long get_job(ifstream &f, string &ref) {
 
 void map_reads(char *fastqname, vector<vector<size_t>> &m) {
 
+  static vector<size_t> locations;
+  locations.reserve(10000);
+
   ifstream f;
   f.open(fastqname);
   string line;
@@ -101,17 +104,18 @@ void map_reads(char *fastqname, vector<vector<size_t>> &m) {
       continue;
     }
     
-    unordered_set<size_t> locations;
     for (size_t i = 0; i < line.length() - LENGTH; i++) {
-      string kmer = line.substr(i, LENGTH); 
-      uint32_t index = ktoi(kmer);
-      add(locations, m[index]);
+      uint32_t index = 0;
+      if (ktoi(line, i, index)) locations.insert(locations.end(), m[index].begin(), m[index].end());
     }
+    sort(locations.begin(), locations.end());
+    locations.erase(unique(locations.begin(), locations.end()), locations.end());
     average += locations.size();
     if (locations.size() == 0) {
       unmapped++;
     }
     counter++;
+    locations.clear();
   }
 
   average /= (counter / 4);
@@ -125,17 +129,18 @@ void distribute_work(char *fname, vector<vector<size_t>> &m) {
   f.open(fname);
 
   string line;
-  // 1 index
-  long pos = 1;
+  // 0 index
+  long pos = 0;
   getline(f, line); // remove first header
   cout << line << endl;
 
+  string ref;
+  ref.reserve(500000000);
   while (!f.eof()) {
-    string ref;
-    ref.reserve(10000000);
     long offset = get_job(f, ref);
     process_chromosome(ref, m, pos);
     pos += offset;
+    ref.clear();
   }
   f.close();
 
@@ -167,7 +172,7 @@ int main(int argc, char *argv[]) {
   
   cout << "Preallocated vector with capacity: " << m.capacity() << endl;
   distribute_work(argv[2], m);
-  //map_reads(argv[1], m);
+  map_reads(argv[1], m);
 
   return 0;
 }
