@@ -9,12 +9,40 @@
 #include <thread>
 #include <mutex>
 #include <unordered_set>
+#include <cassert>
+#include <cmath>
 #include "semaphore.h"
 
 using namespace std;
 
-static const size_t LENGTH = 13;
+static const size_t LENGTH = 15;
 static const long THREADS = 6;
+
+static inline uint32_t chtoi(char c) {
+  switch (toupper(c)) {
+    case 'A':
+      return 0;
+    case 'C':
+      return 1;
+    case 'G':
+      return 2;
+    case 'T':
+      return 3;
+    default:
+      throw invalid_argument("Expected [AGCT], got " + c);
+  }
+}
+
+static inline uint32_t ktoi(string &str) {
+  uint32_t base = 1;
+  assert(str.length() < LENGTH);
+  uint32_t total = 0;
+  for (int i = str.length() - 1; i >= 0; i--) {
+    total += base * chtoi(str[i]);
+    base *= 4;
+  }
+  return total; 
+}
 
 static inline void add(unordered_map<string, vector<size_t> > &m, const string &kmer, long pos) {
   if (m.find(kmer) == m.end()) {
@@ -135,6 +163,8 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+  //vector<vector<size_t>> m;
+  //m.reserve((int) pow(4, LENGTH) * 2);
   unordered_map<string, vector<size_t> > m;
   distribute_work(argv[2], m);
   map_reads(argv[1], m);
