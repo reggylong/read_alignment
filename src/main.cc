@@ -1,4 +1,5 @@
 
+#include <array>
 #include <iostream>
 #include <fstream>
 #include <unordered_map>
@@ -16,6 +17,7 @@
 using namespace std;
 
 static const size_t LENGTH = 15;
+static const size_t SPACE = pow(4, LENGTH);
 static const long THREADS = 6;
 
 static inline uint32_t chtoi(char c) {
@@ -33,9 +35,9 @@ static inline uint32_t chtoi(char c) {
   }
 }
 
-static inline uint32_t ktoi(string &str) {
+static inline uint32_t ktoi(const string &str) {
   uint32_t base = 1;
-  assert(str.length() < LENGTH);
+  assert(str.length() == LENGTH);
   uint32_t total = 0;
   for (int i = str.length() - 1; i >= 0; i--) {
     total += base * chtoi(str[i]);
@@ -44,18 +46,18 @@ static inline uint32_t ktoi(string &str) {
   return total; 
 }
 
-static inline void add(unordered_map<string, vector<size_t> > &m, const string &kmer, long pos) {
-  if (m.find(kmer) == m.end()) {
-    vector<size_t> v;
-    v.emplace_back(pos);
-    m[kmer] = v;
-  } else {
-    m[kmer].emplace_back(pos);
+static inline void add(vector<vector<size_t>> &m, const string &kmer, long pos) {
+  uint32_t index = ktoi(kmer);
+  m[index].emplace_back(pos);
+}
+
+static inline void add(unordered_set<size_t> &s, vector<size_t> &v) {
+  for (size_t i = 0; i < v.size(); i++) {
+    s.insert(v[i]);
   }
 }
 
-
-void process_chromosome(string ref, unordered_map<string, vector<size_t> > &m, long pos) {
+void process_chromosome(string ref, vector<vector<size_t>> &m, long pos) {
   string kmer = "";
 
   for (size_t i = 0; i < ref.length() - LENGTH; i += LENGTH) {
@@ -80,13 +82,9 @@ long get_job(ifstream &f, string &ref) {
 
 }
 
-static inline void add(unordered_set<size_t> &s, vector<size_t> &v) {
-  for (size_t i = 0; i < v.size(); i++) {
-    s.insert(v[i]);
-  }
-}
 
-void map_reads(char *fastqname, unordered_map<string, vector<size_t> > &m) {
+
+void map_reads(char *fastqname, vector<vector<size_t>> &m) {
 
   ifstream f;
   f.open(fastqname);
@@ -106,9 +104,8 @@ void map_reads(char *fastqname, unordered_map<string, vector<size_t> > &m) {
     unordered_set<size_t> locations;
     for (size_t i = 0; i < line.length() - LENGTH; i++) {
       string kmer = line.substr(i, LENGTH); 
-      if (m.find(kmer) != m.end()) {
-        add(locations, m[kmer]);
-      }
+      uint32_t index = ktoi(kmer);
+      add(locations, m[index]);
     }
     average += locations.size();
     if (locations.size() == 0) {
@@ -122,7 +119,7 @@ void map_reads(char *fastqname, unordered_map<string, vector<size_t> > &m) {
   cout << "Unmapped reads: " << unmapped << endl;
 }
 
-void distribute_work(char *fname, unordered_map<string, vector<size_t> > &m) {
+void distribute_work(char *fname, vector<vector<size_t>> &m) {
 
   ifstream f;
   f.open(fname);
@@ -144,10 +141,12 @@ void distribute_work(char *fname, unordered_map<string, vector<size_t> > &m) {
 
   cout << "Size of map: " << m.size() << endl;
   double average = 0.0;
+  long count = 0;
   for (auto iter = m.begin(); iter != m.end(); ++iter) {
-    average += iter->second.size();
+    average += iter->size();
+    if (!iter->empty()) count++;
   }
-  average /= m.size();
+  average /= count;
   cout << "Average # of elements: " << average << endl;
   struct rusage r_usage;
   getrusage(RUSAGE_SELF, &r_usage);
@@ -163,11 +162,12 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  //vector<vector<size_t>> m;
-  //m.reserve((int) pow(4, LENGTH) * 2);
-  unordered_map<string, vector<size_t> > m;
+  vector<vector<size_t>> m;
+  m.resize(SPACE, vector<size_t>(0));
+  
+  cout << "Preallocated vector with capacity: " << m.capacity() << endl;
   distribute_work(argv[2], m);
-  map_reads(argv[1], m);
+  //map_reads(argv[1], m);
 
   return 0;
 }
