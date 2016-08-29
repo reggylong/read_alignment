@@ -22,10 +22,11 @@
 using namespace std;
 
 static const size_t LENGTH = 14;
+static const size_t LOCATIONS = 5;
 static const size_t SPACE = pow(4, LENGTH);
 static const long THREADS = 6;
 
-static __attribute__ ((noinline)) uint32_t chtoi(char c) {
+static uint32_t chtoi(char c) {
   // A & 3 = 01
   // C & 3 = 11
   // G & 3 = 11
@@ -34,7 +35,7 @@ static __attribute__ ((noinline)) uint32_t chtoi(char c) {
   return (uint32_t) c & 3;
 }
 
-static __attribute__ ((noinline)) bool ktoi(const string &read, const long pos, uint32_t &index) {
+static bool ktoi(const string &read, const long pos, uint32_t &index) {
   uint32_t base = 1;
   uint32_t total = 0;
   if (DEBUG) assert(pos + LENGTH - 1 < read.length());
@@ -47,7 +48,7 @@ static __attribute__ ((noinline)) bool ktoi(const string &read, const long pos, 
   return true;
 }
 
-static __attribute__ ((noinline)) bool add(vector<vector<size_t>> &m, const string &read, long pos) {
+static bool add(vector<vector<size_t>> &m, const string &read, long pos) {
   uint32_t index = 0;
   if (ktoi(read, pos, index)) {
     m[index].emplace_back(pos);
@@ -94,6 +95,7 @@ void map_reads(char *fastqname, vector<vector<size_t>> &m) {
   string line;
   long counter = 0;
   double average = 0.0;
+  double dist = 0.0;
   long unmapped = 0;
   while (getline(f, line)) {
     if (counter % 100000 == 0) {
@@ -104,9 +106,15 @@ void map_reads(char *fastqname, vector<vector<size_t>> &m) {
       continue;
     }
     
-    for (size_t i = 0; i < line.length() - LENGTH; i++) {
-      uint32_t index = 0;
-      if (ktoi(line, i, index)) locations.insert(locations.end(), m[index].begin(), m[index].end());
+    size_t i = 0;
+    uint32_t index = 0;
+    while (i < line.length() - LENGTH && locations.size() < LOCATIONS) {
+      if (ktoi(line, i, index)) {
+        for (uint32_t j = 0; j < m[index].size(); j++) {
+          locations.emplace_back(m[index][j] - i);
+        }
+      }
+      i++;
     }
     sort(locations.begin(), locations.end());
     locations.erase(unique(locations.begin(), locations.end()), locations.end());
@@ -119,6 +127,8 @@ void map_reads(char *fastqname, vector<vector<size_t>> &m) {
   }
 
   average /= (counter / 4);
+  dist /= (counter / 4);
+  cout << "Average hamming dist: " << dist << endl;
   cout << "Average # of mapped locations: " << average << endl;
   cout << "Unmapped reads: " << unmapped << endl;
 }
