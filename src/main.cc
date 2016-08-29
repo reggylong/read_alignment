@@ -21,23 +21,24 @@
 
 using namespace std;
 
-static const size_t LENGTH = 14;
+static const size_t LENGTH = 13;
 static const size_t LOCATIONS = 5;
 static const size_t SPACE = pow(4, LENGTH);
 static const long THREADS = 6;
+string complete_ref;
 
-static uint32_t chtoi(char c) {
+static uint_fast32_t chtoi(char c) {
   // A & 3 = 01
   // C & 3 = 11
   // G & 3 = 11
   // T & 3 = 10
   if (c == 'G') return 2;
-  return (uint32_t) c & 3;
+  return (uint_fast32_t) c & 3;
 }
 
-static bool ktoi(const string &read, const long pos, uint32_t &index) {
-  uint32_t base = 1;
-  uint32_t total = 0;
+static bool ktoi(const string &read, const long pos, uint_fast32_t &index) {
+  uint_fast32_t base = 1;
+  uint_fast32_t total = 0;
   if (DEBUG) assert(pos + LENGTH - 1 < read.length());
   for (int i = pos + LENGTH - 1; i >= pos; i--) {
     if (toupper(read[i]) == 'N') return false;
@@ -48,8 +49,8 @@ static bool ktoi(const string &read, const long pos, uint32_t &index) {
   return true;
 }
 
-static bool add(vector<vector<size_t>> &m, const string &read, long pos) {
-  uint32_t index = 0;
+static bool add(vector<vector<uint_fast32_t>> &m, const string &read, long pos) {
+  uint_fast32_t index = 0;
   if (ktoi(read, pos, index)) {
     m[index].emplace_back(pos);
     return true;
@@ -58,7 +59,7 @@ static bool add(vector<vector<size_t>> &m, const string &read, long pos) {
 }
 
 // Importantly, we do not make distinctions between chromosomes
-void process_chromosome(string &ref, vector<vector<size_t>> &m, long pos) {
+void process_chromosome(string &ref, vector<vector<uint_fast32_t>> &m, long pos) {
   string kmer = "";
 
   for (size_t i = pos; i < ref.length() - LENGTH; i += LENGTH) {
@@ -67,27 +68,35 @@ void process_chromosome(string &ref, vector<vector<size_t>> &m, long pos) {
   }
 }
 
-long get_job(ifstream &f, string &ref) {
+long read_chromosome(ifstream &f, string &ref) {
   string line;
-  long size = 0;
   while (getline(f, line)) {
     if (line[0] == '>') {
+      // previous chromosome's length
+      cout << "Read " << ref.length() << " characters" << endl;
       cout << line << endl;
       break;
     }
-    if (line.find('N') != string::npos) {
-      size += line.length();
-    } else ref.append(line);
+    ref.append(line);
   }
-  return ref.size();
+  if (f.eof()) {
+    cout << "Read " << ref.length() << " characters" << endl;
+  }
+  return ref.length();
+}
 
+uint_fast32_t hamming(const string &read, uint_fast32_t pos) {
+  uint_fast32_t dist = 0;
+  for (size_t i = 0; i < read.length(); i++) {
+    if (read[i] != complete_ref[pos + i]) dist++;
+  }
+  return dist;
 }
 
 
+void map_reads(char *fastqname, vector<vector<uint_fast32_t>> &m) {
 
-void map_reads(char *fastqname, vector<vector<size_t>> &m) {
-
-  static vector<size_t> locations;
+  static vector<uint_fast32_t> locations;
   locations.reserve(10000);
 
   ifstream f;
@@ -107,10 +116,10 @@ void map_reads(char *fastqname, vector<vector<size_t>> &m) {
     }
     
     size_t i = 0;
-    uint32_t index = 0;
-    while (i < line.length() - LENGTH && locations.size() < LOCATIONS) {
+    uint_fast32_t index = 0;
+    while (i < line.size() && (i < LENGTH || locations.size() < LOCATIONS)) {
       if (ktoi(line, i, index)) {
-        for (uint32_t j = 0; j < m[index].size(); j++) {
+        for (uint_fast32_t j = 0; j < m[index].size(); j++) {
           locations.emplace_back(m[index][j] - i);
         }
       }
@@ -133,7 +142,7 @@ void map_reads(char *fastqname, vector<vector<size_t>> &m) {
   cout << "Unmapped reads: " << unmapped << endl;
 }
 
-void distribute_work(char *fname, vector<vector<size_t>> &m) {
+void read_reference(char *fname, vector<vector<uint_fast32_t>> &m) {
 
   ifstream f;
   f.open(fname);
@@ -147,13 +156,15 @@ void distribute_work(char *fname, vector<vector<size_t>> &m) {
   string ref;
   ref.reserve(500000000);
   while (!f.eof()) {
-    long offset = get_job(f, ref);
+    long offset = read_chromosome(f, ref);
     process_chromosome(ref, m, pos);
+    complete_ref.append(ref);
     pos += offset;
     ref.clear();
   }
   f.close();
 
+  /*
   cout << "Size of map: " << m.size() << endl;
   double average = 0.0;
   long count = 0;
@@ -165,7 +176,7 @@ void distribute_work(char *fname, vector<vector<size_t>> &m) {
   cout << "Average # of elements: " << average << endl;
   struct rusage r_usage;
   getrusage(RUSAGE_SELF, &r_usage);
-  cout << "Memory usage " << r_usage.ru_maxrss * 1024 << endl;
+  cout << "Memory usage " << r_usage.ru_maxrss * 1024 << endl;*/
 }
 
 
@@ -177,12 +188,14 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  vector<vector<size_t>> m;
-  m.resize(SPACE, vector<size_t>(0));
+  complete_ref.reserve(4000000000);
+  vector<vector<uint_fast32_t>> m;
+  m.resize(SPACE, vector<uint_fast32_t>(0));
   
-  cout << "Preallocated vector with capacity: " << m.capacity() << endl;
-  distribute_work(argv[2], m);
-  map_reads(argv[1], m);
+  //cout << "Preallocated vector with capacity: " << m.capacity() << endl;
+  read_reference(argv[2], m);
+  //cout << "Reference genome has length: " << complete_ref.size() << endl;
+  //map_reads(argv[1], m);
 
   return 0;
 }
