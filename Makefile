@@ -1,6 +1,6 @@
 CC=clang
-CFLAGS=-c -Wall -O2 -std=c++0x -pg
-LDFLAGS=-pg
+CFLAGS=-c -Wall -O2 -std=c++0x
+LDFLAGS=
 CPP_FILES=$(wildcard src/*.cc) 
 OBJ_FILES=$(addprefix obj/,$(notdir $(CPP_FILES:.cc=.o)))
 OBJECTS=$(SOURCES:.cc=.o)
