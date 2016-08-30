@@ -181,7 +181,7 @@ void map_reads(char *fastqname, vector<vector<uint_fast32_t>> &m) {
   long unmapped = 0;
   string name = "";
   while (getline(f, line)) {
-    if (counter % 1000 == 0) {
+    if (counter % 1000000 == 0) {
       cout << "Examined " << counter << " lines" << endl;
     }
     if (counter % 4 != 1) {
