@@ -26,6 +26,7 @@ using namespace std;
 static const size_t LENGTH = 14;
 static const size_t LOCATIONS = 10;
 static const size_t MIN_COST = 5;
+static const size_t CUTOFF = 100;
 static const size_t SPACE = pow(4, LENGTH);
 static const long THREADS = 6;
 string complete_ref;
@@ -126,7 +127,7 @@ uint_fast32_t hamming(const string &read, uint_fast32_t pos) {
 void compute_locations(const string &read, vector<vector<uint_fast32_t>> &m, vector<uint_fast32_t> &locations) {
   size_t i = 0;
   uint_fast32_t index = 0;
-  while (i < read.size() && (i < LENGTH || locations.size() < LOCATIONS)) {
+  while (locations.size() < CUTOFF && i < read.size() && (i < LENGTH || locations.size() < LOCATIONS)) {
     if (ktoi(read, i, index)) {
       for (uint_fast32_t j = 0; j < m[index].size(); j++) {
         if (m[index][j] - i + read.length() >= complete_ref.size()) continue; 
@@ -164,7 +165,6 @@ int_fast32_t compute_hamming(string &read, vector<uint_fast32_t> &locations, vec
 
 void map_reads(char *fastqname, vector<vector<uint_fast32_t>> &m) {
 
-  static size_t max_size = 0;
   static vector<uint_fast32_t> locations;
   static vector<uint_fast32_t> reversed_locations;
   locations.reserve(10000);
@@ -236,10 +236,6 @@ void map_reads(char *fastqname, vector<vector<uint_fast32_t>> &m) {
       edit += e_dist;
     }
     counter++;
-    if (locations.size() + reversed_locations.size() > max_size) {
-      max_size = locations.size() + reversed_locations.size();
-      cout << locations.size() + reversed_locations.size() << endl;
-    }
     locations.clear();
     reversed_locations.clear();
   }
