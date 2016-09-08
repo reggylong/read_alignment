@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <unordered_map>
+#include <map>
 #include <vector>
 #include <sstream>
 #include <sys/time.h>
@@ -26,9 +27,10 @@ using namespace std;
 static const size_t LENGTH = 14;
 static const size_t LOCATIONS = 10;
 static const size_t MIN_COST = 5;
-static const size_t CUTOFF = 100;
+static const size_t CUTOFF = 50000;
 static const size_t SPACE = pow(4, LENGTH);
 static const long THREADS = 6;
+vector<uint_fast32_t> counts(101, 0);
 string complete_ref;
 
 static uint_fast32_t edit_dist(string str1, string str2) {
@@ -127,8 +129,8 @@ uint_fast32_t hamming(const string &read, uint_fast32_t pos) {
 void compute_locations(const string &read, vector<vector<uint_fast32_t>> &m, vector<uint_fast32_t> &locations) {
   size_t i = 0;
   uint_fast32_t index = 0;
-  while (locations.size() < CUTOFF && i < read.size() && (i < LENGTH || locations.size() < LOCATIONS)) {
-    if (ktoi(read, i, index)) {
+  while (i < read.size() && (i < LENGTH || locations.size() < LOCATIONS)) {
+    if (ktoi(read, i, index) && m[index].size() < CUTOFF) {
       for (uint_fast32_t j = 0; j < m[index].size(); j++) {
         if (m[index][j] - i + read.length() >= complete_ref.size()) continue; 
         locations.push_back(m[index][j] - i);
@@ -213,6 +215,7 @@ void map_reads(char *fastqname, vector<vector<uint_fast32_t>> &m) {
 
     if (locations.empty() && reversed_locations.empty()) {
       unmapped++;
+      counts[line.length()]++;
     } else {
       int_fast32_t locations_index = compute_hamming(line, locations, dists);
       uint_fast32_t value = (locations_index >= 0) ? dists[locations_index] : UINT_FAST32_MAX;
@@ -234,6 +237,7 @@ void map_reads(char *fastqname, vector<vector<uint_fast32_t>> &m) {
       if (STATS && VERBOSE) cout << "[map_reads] " << name << " " << e_dist << endl;
       dist += h_dist;
       edit += e_dist;
+      counts[h_dist]++;
     }
     counter++;
     locations.clear();
@@ -244,7 +248,7 @@ void map_reads(char *fastqname, vector<vector<uint_fast32_t>> &m) {
   dist /= (counter / 4);
   edit /= (counter / 4);
   cout << "Average hamming dist: " << dist << endl;
-  cout << "Average edit dist: " << edit << endl;
+  if (STATS) cout << "Average edit dist: " << edit << endl;
   cout << "Average # of mapped locations: " << average << endl;
   cout << "Unmapped reads: " << unmapped << endl;
 }
@@ -287,7 +291,7 @@ int main(int argc, char *argv[]) {
   ios::sync_with_stdio(false);
 
   if (argc < 3) {
-    cout << "Usage: align [fastq file] [reference genome path]" << endl;
+    cout << "Usage: align [fastq file] [reference genome path] [optional: stats]" << endl;
     exit(1);
   }
 
@@ -303,6 +307,19 @@ int main(int argc, char *argv[]) {
   map_stats(m);
 
   map_reads(argv[1], m);
+
+  if (argc > 3) {
+    ofstream f;
+    f.open(argv[3]);
+    double total = 0;
+    for (auto n : counts) {
+      total += n;
+    }
+    for (uint_fast32_t i = 0; i < counts.size(); i++) {
+      if (counts[i] > 0) f << i << " " << counts[i] / total << " " << counts[i] << endl;
+    }
+    f.close();
+  }
 
   return 0;
 }
