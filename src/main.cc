@@ -20,14 +20,14 @@
 
 #define DEBUG false
 #define VERBOSE false
-#define STATS false
+#define STATS true
 
 using namespace std;
 
 static const size_t LENGTH = 14;
-static const size_t LOCATIONS = 10;
+static const size_t LOCATIONS = 100;
 static const size_t MIN_COST = 5;
-static const size_t CUTOFF = 50000;
+static const size_t CUTOFF = 100000;
 static const size_t SPACE = pow(4, LENGTH);
 static const long THREADS = 6;
 vector<uint_fast32_t> counts(101, 0);
@@ -129,7 +129,7 @@ uint_fast32_t hamming(const string &read, uint_fast32_t pos) {
 void compute_locations(const string &read, vector<vector<uint_fast32_t>> &m, vector<uint_fast32_t> &locations) {
   size_t i = 0;
   uint_fast32_t index = 0;
-  while (i < read.size() && (i < LENGTH || locations.size() < LOCATIONS)) {
+  while (i < read.size()) {// && (i < LENGTH || locations.size() < LOCATIONS)) {
     if (ktoi(read, i, index) && m[index].size() < CUTOFF) {
       for (uint_fast32_t j = 0; j < m[index].size(); j++) {
         if (m[index][j] - i + read.length() >= complete_ref.size()) continue; 
@@ -237,7 +237,11 @@ void map_reads(char *fastqname, vector<vector<uint_fast32_t>> &m) {
       if (STATS && VERBOSE) cout << "[map_reads] " << name << " " << e_dist << endl;
       dist += h_dist;
       edit += e_dist;
-      counts[h_dist]++;
+      if (STATS) {
+        counts[e_dist]++;
+      } else {
+        counts[h_dist]++;
+      }
     }
     counter++;
     locations.clear();
